@@ -1,7 +1,7 @@
 use regex::Regex;
 use anyhow::{Result, bail};
 use virt::connect::Connect;
-use virt::error::Error;
+
 use virt::sys;
 use lazy_static::lazy_static;
 use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{NodeGroup};

@@ -3,7 +3,7 @@
 extern crate tracing;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::time::sleep;
+use std::thread::sleep;
 use tokio::runtime::Builder;
 use tokio::task;
 use tokio_test;
@@ -46,7 +46,7 @@ async fn init() {
             debug!("Starting server!");
             serve(String::from(LISTEN_ADDR), LISTEN_PORT, cert_path, key_path).await;
         });
-    sleep(Duration::from_millis(3000)).unwrap();
+    sleep(Duration::from_millis(3000));
     debug!("Hopefully server is ready after 3 secs!");
 
 }

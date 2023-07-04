@@ -56,11 +56,11 @@ pub struct PGCloudProvider {}
 
 #[tonic::async_trait]
 impl CloudProvider for PGCloudProvider {
-    async fn node_groups(&self, request: Request<NodeGroupsRequest>) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
+    async fn node_groups(&self, _request: Request<NodeGroupsRequest>) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
 
         let ng:Vec<NodeGroup> = match get_node_groups().await {
             Ok(n) => n,
-            Err(e) => {
+            Err(_e) => {
                 return Err(Status::new(Code::Unavailable, "error checking node groups"));
             }
         };
@@ -69,64 +69,64 @@ impl CloudProvider for PGCloudProvider {
         Ok(Response::new(resp))
     }
 
-    async fn node_group_for_node(&self, request: Request<NodeGroupForNodeRequest>) -> std::result::Result<Response<NodeGroupForNodeResponse>, Status> {
+    async fn node_group_for_node(&self, _request: Request<NodeGroupForNodeRequest>) -> std::result::Result<Response<NodeGroupForNodeResponse>, Status> {
         todo!()
     }
 
-    async fn pricing_node_price(&self, request: Request<PricingNodePriceRequest>) -> std::result::Result<Response<PricingNodePriceResponse>, Status> {
+    async fn pricing_node_price(&self, _request: Request<PricingNodePriceRequest>) -> std::result::Result<Response<PricingNodePriceResponse>, Status> {
         todo!()
     }
 
-    async fn pricing_pod_price(&self, request: Request<PricingPodPriceRequest>) -> std::result::Result<Response<PricingPodPriceResponse>, Status> {
+    async fn pricing_pod_price(&self, _request: Request<PricingPodPriceRequest>) -> std::result::Result<Response<PricingPodPriceResponse>, Status> {
         todo!()
     }
 
-    async fn gpu_label(&self, request: Request<GpuLabelRequest>) -> std::result::Result<Response<GpuLabelResponse>, Status> {
+    async fn gpu_label(&self, _request: Request<GpuLabelRequest>) -> std::result::Result<Response<GpuLabelResponse>, Status> {
         todo!()
     }
 
-    async fn get_available_gpu_types(&self, request: Request<GetAvailableGpuTypesRequest>) -> std::result::Result<Response<GetAvailableGpuTypesResponse>, Status> {
+    async fn get_available_gpu_types(&self, _request: Request<GetAvailableGpuTypesRequest>) -> std::result::Result<Response<GetAvailableGpuTypesResponse>, Status> {
         todo!()
     }
 
-    async fn cleanup(&self, request: Request<CleanupRequest>) -> std::result::Result<Response<CleanupResponse>, Status> {
+    async fn cleanup(&self, _request: Request<CleanupRequest>) -> std::result::Result<Response<CleanupResponse>, Status> {
         todo!()
     }
 
-    async fn refresh(&self, request: Request<RefreshRequest>) -> std::result::Result<Response<RefreshResponse>, Status> {
+    async fn refresh(&self, _request: Request<RefreshRequest>) -> std::result::Result<Response<RefreshResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_target_size(&self, request: Request<NodeGroupTargetSizeRequest>) -> std::result::Result<Response<NodeGroupTargetSizeResponse>, Status> {
+    async fn node_group_target_size(&self, _request: Request<NodeGroupTargetSizeRequest>) -> std::result::Result<Response<NodeGroupTargetSizeResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_increase_size(&self, request: Request<NodeGroupIncreaseSizeRequest>) -> std::result::Result<Response<NodeGroupIncreaseSizeResponse>, Status> {
+    async fn node_group_increase_size(&self, _request: Request<NodeGroupIncreaseSizeRequest>) -> std::result::Result<Response<NodeGroupIncreaseSizeResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_delete_nodes(&self, request: Request<NodeGroupDeleteNodesRequest>) -> std::result::Result<Response<NodeGroupDeleteNodesResponse>, Status> {
+    async fn node_group_delete_nodes(&self, _request: Request<NodeGroupDeleteNodesRequest>) -> std::result::Result<Response<NodeGroupDeleteNodesResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_decrease_target_size(&self, request: Request<NodeGroupDecreaseTargetSizeRequest>) -> std::result::Result<Response<NodeGroupDecreaseTargetSizeResponse>, Status> {
+    async fn node_group_decrease_target_size(&self, _request: Request<NodeGroupDecreaseTargetSizeRequest>) -> std::result::Result<Response<NodeGroupDecreaseTargetSizeResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_nodes(&self, request: Request<NodeGroupNodesRequest>) -> std::result::Result<Response<NodeGroupNodesResponse>, Status> {
+    async fn node_group_nodes(&self, _request: Request<NodeGroupNodesRequest>) -> std::result::Result<Response<NodeGroupNodesResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_template_node_info(&self, request: Request<NodeGroupTemplateNodeInfoRequest>) -> std::result::Result<Response<NodeGroupTemplateNodeInfoResponse>, Status> {
+    async fn node_group_template_node_info(&self, _request: Request<NodeGroupTemplateNodeInfoRequest>) -> std::result::Result<Response<NodeGroupTemplateNodeInfoResponse>, Status> {
         todo!()
     }
 
-    async fn node_group_get_options(&self, request: Request<NodeGroupAutoscalingOptionsRequest>) -> std::result::Result<Response<NodeGroupAutoscalingOptionsResponse>, Status> {
+    async fn node_group_get_options(&self, _request: Request<NodeGroupAutoscalingOptionsRequest>) -> std::result::Result<Response<NodeGroupAutoscalingOptionsResponse>, Status> {
         todo!()
     }
 }
 
-pub async fn serve(addr: String, port: u16, cert_path: PathBuf, key_path: PathBuf) -> Result<(),tonic::transport::Error> {
+pub async fn serve(_addr: String, _port: u16, cert_path: PathBuf, key_path: PathBuf) -> Result<(),tonic::transport::Error> {
     let addr = "[::]:50051".parse().unwrap();
     let foo :PGCloudProvider = PGCloudProvider::default();
     let cert = std::fs::read_to_string(cert_path).ok();
