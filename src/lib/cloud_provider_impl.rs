@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use tonic::{Request, Response, Status};
+use tonic::{Code, Request, Response, Status};
 pub mod external_grpc {
     include!("../../proto/generated/mod.rs");
     pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
@@ -49,15 +49,23 @@ use external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{
     RefreshRequest,
     RefreshResponse};
 
+use crate::libvirt::{get_node_groups};
+
 #[derive(Default)]
 pub struct PGCloudProvider {}
 
 #[tonic::async_trait]
 impl CloudProvider for PGCloudProvider {
     async fn node_groups(&self, request: Request<NodeGroupsRequest>) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
-        let group_list:Vec<NodeGroup> = vec![];
-        let resp :NodeGroupsResponse = NodeGroupsResponse { node_groups: group_list};
 
+        let ng:Vec<NodeGroup> = match get_node_groups().await {
+            Ok(n) => n,
+            Err(e) => {
+                return Err(Status::new(Code::Unavailable, "error checking node groups"));
+            }
+        };
+
+        let resp :NodeGroupsResponse = NodeGroupsResponse { node_groups: ng};
         Ok(Response::new(resp))
     }
 
