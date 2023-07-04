@@ -21,13 +21,15 @@ tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 tonic = { version = "0.9.2", features = ["tls", "tls-roots", "tls-roots-common", "tls-webpki-roots", "gzip"] }
 tonic-reflection = "0.9.2"
-tokio-test = "0.4.2"
+
 anyhow = "1.0.71"
-tokio = { version = "1.0", features = ["tracing", "rt-multi-thread", "macros"] }
+tokio = { version = "1.0", features = ["parking_lot", "sync", "tracing", "rt-multi-thread", "macros"] }
 regex = "1.8.4"
 lazy_static = "1.4.0"
 [dev-dependencies]
 ctor = "0.2.3"
+tokio-test = "0.4.2"
+rstest = "0.17.0"
 [build-dependencies]
 tonic-build = { version = "0.9.2", features = ["prost"] }
 

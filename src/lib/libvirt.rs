@@ -8,13 +8,13 @@ use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider:
 
 const MIN_SIZE: i32 = 1;
 const MAX_SIZE: i32 = 10;
-
 const VIRT_URI: &str = "qemu+ssh://root@10.174.5.25/system";
+
 lazy_static! {
- static ref RE: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
+ pub static ref NODE_GROUP_REGEX: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
 }
 
-pub(crate) async fn get_node_groups() -> Result<Vec<NodeGroup>> {
+pub async fn get_node_groups() -> Result<Vec<NodeGroup>> {
     let conn = match connect_libvirt() {
         Some(conn) => conn,
         None => {
@@ -35,6 +35,34 @@ pub(crate) async fn get_node_groups() -> Result<Vec<NodeGroup>> {
 
 
 }
+pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> {
+    let conn = match connect_libvirt() {
+        Some(conn) => conn,
+        None => {
+            bail!("Couldn't connect to libvirt!");
+        }
+    };
+    match libvirt_get_nodes(&conn) {
+        Ok(v) => {
+            let mut node_list:Vec<String> = vec![];
+            for node in v {
+                for cap in NODE_GROUP_REGEX.captures_iter(&node) {
+                    if node_group.eq_ignore_ascii_case(&cap[1]) {
+                        node_list.push(node.clone());
+                    }
+                }
+            };
+            disconnect(conn);
+            Ok(node_list)
+        },
+        Err(e) => {
+            disconnect(conn);
+            bail!("failure in retrieving node names: {e}");
+        }
+    }
+
+
+}
 
 fn connect_libvirt() -> Option<Connect> {
     debug!("About to connect to {VIRT_URI}");
@@ -48,21 +76,42 @@ fn connect_libvirt() -> Option<Connect> {
     Some(conn)
 }
 
+fn libvirt_get_nodes(conn: &Connect) -> Result<Vec<String>> {
+    let flags = sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE;
+    let mut node_list: Vec<String> = vec![];
+    if let Ok(doms) = conn.list_all_domains(flags) {
+        for dom in doms {
+            match dom.get_name() {
+                Ok(s) => node_list.push(s),
+                Err(e) => {
+                    warn!("The domain had no name: {}",dom.get_id().unwrap());
+                }
+            }
+        }
+        return Ok(node_list);
+    } else {
+        bail!("Unable to get node list.");
+    };
+}
+
 fn libvirt_node_groups(conn: &Connect) -> Result<Vec<NodeGroup>> {
 
     let flags = sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE;
     let mut node_group_list: Vec<NodeGroup> = vec![];
-    if let Ok(doms) = conn.list_all_domains(flags) {
-        for dom in doms {
-            let name = dom.get_name().unwrap_or_else(|_| String::from("undefined"));
-            for cap in RE.captures_iter(&name) {
-                node_group_list.push(NodeGroup{
-                    id:String::from(&cap[1]),
-                    min_size: MIN_SIZE,
-                    max_size: MAX_SIZE,
-                    debug: String::from("false")
-                })
-            }
+    let node_list = match libvirt_get_nodes(&conn) {
+        Ok(v) => v,
+        Err(e) => {
+            bail!("Unable to get node list: {e}");
+        }
+    };
+    for node in node_list {
+        for cap in NODE_GROUP_REGEX.captures_iter(&node) {
+            node_group_list.push(NodeGroup{
+                id:String::from(&cap[1]),
+                min_size: MIN_SIZE,
+                max_size: MAX_SIZE,
+                debug: String::from("false")
+            })
         }
     };
     Ok(node_group_list)
