@@ -1,14 +1,14 @@
+use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::NodeGroup;
+use crate::vm_xml::{VM_XML, VOL_XML};
+use anyhow::{bail, Result};
+use lazy_static::lazy_static;
 use regex::Regex;
-use anyhow::{Result, bail};
+use uuid::Uuid;
 use virt::connect::Connect;
+use virt::domain::Domain;
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
-use virt::domain::Domain;
-use uuid::Uuid;
 use virt::sys;
-use lazy_static::lazy_static;
-use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{NodeGroup};
-use crate::vm_xml::{VM_XML, VOL_XML};
 
 const MIN_SIZE: i32 = 1;
 const MAX_SIZE: i32 = 10;
@@ -17,9 +17,8 @@ const VIRT_URI: &str = "qemu+ssh://root@10.174.5.25/system";
 const SOURCE_IMAGE_POOL: &str = "default";
 const SOURCE_IMAGE_KEY: &str = "/var/lib/libvirt/images/jammy-32g.qcow2";
 
-
 lazy_static! {
- pub static ref NODE_GROUP_REGEX: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
+    pub static ref NODE_GROUP_REGEX: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
 }
 
 pub async fn get_node_groups() -> Result<Vec<NodeGroup>> {
@@ -32,19 +31,15 @@ pub async fn get_node_groups() -> Result<Vec<NodeGroup>> {
     match libvirt_node_groups(&conn) {
         Ok(v) => {
             disconnect(conn);
-            info!("Found {} node groups.",v.len());
+            info!("Found {} node groups.", v.len());
             Ok(v)
-        },
+        }
         Err(e) => {
             disconnect(conn);
             bail!("failure in converting libvirt domain list to nodegroups: {e}");
         }
     }
-
-
 }
-
-
 
 pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> {
     let conn = match connect_libvirt() {
@@ -55,24 +50,22 @@ pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> 
     };
     match libvirt_get_nodes(&conn) {
         Ok(v) => {
-            let mut node_list:Vec<String> = vec![];
+            let mut node_list: Vec<String> = vec![];
             for node in v {
                 for cap in NODE_GROUP_REGEX.captures_iter(&node) {
                     if node_group.eq_ignore_ascii_case(&cap[1]) {
                         node_list.push(node.clone());
                     }
                 }
-            };
+            }
             disconnect(conn);
             Ok(node_list)
-        },
+        }
         Err(e) => {
             disconnect(conn);
             bail!("failure in retrieving node names: {e}");
         }
     }
-
-
 }
 
 fn connect_libvirt() -> Option<Connect> {
@@ -95,7 +88,7 @@ fn libvirt_get_nodes(conn: &Connect) -> Result<Vec<String>> {
             match dom.get_name() {
                 Ok(s) => node_list.push(s),
                 Err(_e) => {
-                    warn!("The domain had no name: {}",dom.get_id().unwrap());
+                    warn!("The domain had no name: {}", dom.get_id().unwrap());
                 }
             }
         }
@@ -106,7 +99,6 @@ fn libvirt_get_nodes(conn: &Connect) -> Result<Vec<String>> {
 }
 
 fn libvirt_node_groups(conn: &Connect) -> Result<Vec<NodeGroup>> {
-
     let _flags = sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE;
     let mut node_group_list: Vec<NodeGroup> = vec![];
     let node_list = match libvirt_get_nodes(&conn) {
@@ -117,14 +109,14 @@ fn libvirt_node_groups(conn: &Connect) -> Result<Vec<NodeGroup>> {
     };
     for node in node_list {
         for cap in NODE_GROUP_REGEX.captures_iter(&node) {
-            node_group_list.push(NodeGroup{
-                id:String::from(&cap[1]),
+            node_group_list.push(NodeGroup {
+                id: String::from(&cap[1]),
                 min_size: MIN_SIZE,
                 max_size: MAX_SIZE,
-                debug: String::from("false")
+                debug: String::from("false"),
             })
         }
-    };
+    }
     Ok(node_group_list)
 }
 
@@ -134,8 +126,6 @@ fn disconnect(mut conn: Connect) {
     };
     debug!("Disconnected from libvirt");
 }
-
-
 
 pub fn create_instance() -> Result<()> {
     let conn = match connect_libvirt() {
@@ -166,13 +156,15 @@ pub fn create_instance() -> Result<()> {
 
     // create disk
     let volxml = String::from(VOL_XML).replace("HOSTNAME", &hostname);
-    if let Err(e) = StorageVol::create_xml(&default_pool, &volxml,0) {
+    if let Err(e) = StorageVol::create_xml(&default_pool, &volxml, 0) {
         disconnect(conn);
         bail!("we attempted to create storage but failed: {e}");
     }
 
     // create vm
-    let vmxml = String::from(VM_XML).replace("HOSTNAME",&hostname).replace("NETWORK-NAME",&networkname);
+    let vmxml = String::from(VM_XML)
+        .replace("HOSTNAME", &hostname)
+        .replace("NETWORK-NAME", &networkname);
     if let Err(e) = Domain::create_xml(&conn, &vmxml, 0) {
         disconnect(conn);
         bail!("Couldn't create VM: {e}");
@@ -180,5 +172,4 @@ pub fn create_instance() -> Result<()> {
     disconnect(conn);
     info!("Successfully submitted libvirt domain {hostname} for startup");
     Ok(())
-
 }

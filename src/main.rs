@@ -3,7 +3,6 @@ extern crate tracing;
 use libvirt_autoscaler::cloud_provider_impl::serve;
 use std::path::PathBuf;
 
-
 #[tokio::main]
 async fn main() {
     // setup logging
@@ -13,8 +12,5 @@ async fn main() {
     let cert_path: PathBuf = PathBuf::from("tls/localhost.crt");
     let key_path: PathBuf = PathBuf::from("tls/localhost.key");
 
-    let _ = serve(String::from("[::]"),
-          50051,
-          cert_path,
-          key_path).await;
+    let _ = serve(String::from("[::]"), 50051, cert_path, key_path).await;
 }
