@@ -94,7 +94,7 @@ fn libvirt_get_nodes(conn: &Connect) -> Result<Vec<String>> {
         for dom in doms {
             match dom.get_name() {
                 Ok(s) => node_list.push(s),
-                Err(e) => {
+                Err(_e) => {
                     warn!("The domain had no name: {}",dom.get_id().unwrap());
                 }
             }
@@ -107,7 +107,7 @@ fn libvirt_get_nodes(conn: &Connect) -> Result<Vec<String>> {
 
 fn libvirt_node_groups(conn: &Connect) -> Result<Vec<NodeGroup>> {
 
-    let flags = sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE;
+    let _flags = sys::VIR_CONNECT_LIST_DOMAINS_ACTIVE;
     let mut node_group_list: Vec<NodeGroup> = vec![];
     let node_list = match libvirt_get_nodes(&conn) {
         Ok(v) => v,
@@ -151,7 +151,7 @@ pub fn create_instance() -> Result<()> {
             bail!("Can't find default storage pool: {e}");
         }
     };
-    let source_image = match StorageVol::lookup_by_key(&conn, SOURCE_IMAGE_KEY) {
+    let _source_image = match StorageVol::lookup_by_key(&conn, SOURCE_IMAGE_KEY) {
         Ok(s) => s,
         Err(e) => {
             disconnect(conn);
