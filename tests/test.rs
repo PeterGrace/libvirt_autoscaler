@@ -8,11 +8,22 @@ use libvirt_autoscaler::cloud_provider_impl::{ImplementedCloudProvider};
 use libvirt_autoscaler::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::cloud_provider_server::CloudProvider;
 use libvirt_autoscaler::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{ExternalGrpcNode, NodeGroupForNodeRequest, NodeGroupNodesRequest, NodeGroupsRequest, PricingNodePriceRequest, PricingPodPriceRequest};
 use libvirt_autoscaler::cloud_provider_impl::external_grpc::k8s::io::apimachinery::pkg::apis::meta::v1::Time;
+
 #[ctor::ctor]
 async fn init() {
     let _ = dotenv::from_path("./.env");
     tracing_subscriber::fmt::init();
 }
+
+// #[test]
+// fn test_create_vm() {
+//     if let Err(e) = create_instance() {
+//         panic!("{e}");
+//     }
+//     assert_eq!(true,true);
+//
+// }
+
 
 #[tokio::test]
 async fn test_node_groups() {

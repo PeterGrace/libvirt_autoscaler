@@ -26,6 +26,13 @@ anyhow = "1.0.71"
 tokio = { version = "1.0", features = ["parking_lot", "sync", "tracing", "rt-multi-thread", "macros"] }
 regex = "1.8.4"
 lazy_static = "1.4.0"
+
+[dependencies.uuid]
+version = "1.4.0"
+features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+ ]
 [dev-dependencies]
 ctor = "0.2.3"
 tokio-test = "0.4.2"

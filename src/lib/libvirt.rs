@@ -1,14 +1,22 @@
 use regex::Regex;
 use anyhow::{Result, bail};
 use virt::connect::Connect;
-
+use virt::storage_pool::StoragePool;
+use virt::storage_vol::StorageVol;
+use virt::domain::Domain;
+use uuid::Uuid;
 use virt::sys;
 use lazy_static::lazy_static;
 use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{NodeGroup};
+use crate::vm_xml::{VM_XML, VOL_XML};
 
 const MIN_SIZE: i32 = 1;
 const MAX_SIZE: i32 = 10;
 const VIRT_URI: &str = "qemu+ssh://root@10.174.5.25/system";
+
+const SOURCE_IMAGE_POOL: &str = "default";
+const SOURCE_IMAGE_KEY: &str = "/var/lib/libvirt/images/jammy-32g.qcow2";
+
 
 lazy_static! {
  pub static ref NODE_GROUP_REGEX: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
@@ -35,6 +43,9 @@ pub async fn get_node_groups() -> Result<Vec<NodeGroup>> {
 
 
 }
+
+
+
 pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> {
     let conn = match connect_libvirt() {
         Some(conn) => conn,
@@ -122,4 +133,52 @@ fn disconnect(mut conn: Connect) {
         error!("Failed to disconnect from libvirt: {e}");
     };
     debug!("Disconnected from libvirt");
+}
+
+
+
+pub fn create_instance() -> Result<()> {
+    let conn = match connect_libvirt() {
+        Some(conn) => conn,
+        None => {
+            bail!("Couldn't connect to libvirt!");
+        }
+    };
+    let default_pool = match StoragePool::lookup_by_name(&conn, SOURCE_IMAGE_POOL) {
+        Ok(d) => d,
+        Err(e) => {
+            disconnect(conn);
+            bail!("Can't find default storage pool: {e}");
+        }
+    };
+    let source_image = match StorageVol::lookup_by_key(&conn, SOURCE_IMAGE_KEY) {
+        Ok(s) => s,
+        Err(e) => {
+            disconnect(conn);
+            bail!("Can't find jammy-32g.qcow2 source image: {e}");
+        }
+    };
+
+    // decide on host details
+    let uuid = Uuid::new_v4();
+    let hostname = format!("k8s-ng1-{uuid}");
+    let networkname = String::from("bridged-vlan-3");
+
+    // create disk
+    let volxml = String::from(VOL_XML).replace("HOSTNAME", &hostname);
+    if let Err(e) = StorageVol::create_xml(&default_pool, &volxml,0) {
+        disconnect(conn);
+        bail!("we attempted to create storage but failed: {e}");
+    }
+
+    // create vm
+    let vmxml = String::from(VM_XML).replace("HOSTNAME",&hostname).replace("NETWORK-NAME",&networkname);
+    if let Err(e) = Domain::create_xml(&conn, &vmxml, 0) {
+        disconnect(conn);
+        bail!("Couldn't create VM: {e}");
+    }
+    disconnect(conn);
+    info!("Successfully submitted libvirt domain {hostname} for startup");
+    Ok(())
+
 }
