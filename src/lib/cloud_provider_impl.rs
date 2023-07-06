@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use tokio::time::sleep;
 use tonic::{Code, Request, Response, Status};
 pub mod protobufs {
     include!("../../proto/generated/mod.rs");
@@ -200,9 +199,9 @@ impl CloudProvider for ImplementedCloudProvider {
                 }
             }
         }
-        debug!("Should sleep now for 120 seconds to give nodes time to warm up");
-        sleep(timeDuration::from_secs(12)).await;
-        debug!("I should have waited for 120 seconds");
+        //debug!("Should sleep now for 120 seconds to give nodes time to warm up");
+        //sleep(timeDuration::from_secs(120)).await;
+        //debug!("I should have waited for 120 seconds");
         let resp = NodeGroupIncreaseSizeResponse::default();
         Ok(Response::new(resp))
     }
