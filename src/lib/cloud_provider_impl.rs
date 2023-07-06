@@ -32,8 +32,7 @@ use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1:
 use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::InstanceStatus;
 
 use crate::libvirt::{
-    create_instance, get_nodes_in_node_group, libvirt_delete_node,
-    NODE_GROUP_REGEX,
+    create_instance, get_nodes_in_node_group, libvirt_delete_node, NODE_GROUP_REGEX,
 };
 
 #[derive(Default)]
@@ -43,19 +42,20 @@ fn get_nodegroup_from_string(input: String) -> Option<String> {
     for cap in NODE_GROUP_REGEX.captures_iter(&input) {
         return Some(String::from(&cap[1]));
     }
+    let ignore = Some(String::from(""));
     match input.as_str() {
-        "k8snode05" => Some(String::from("static-asrock")),
-        "k8snode06" => Some(String::from("static-asrock")),
-        "k8snode07" => Some(String::from("static-asrock")),
-        "tpi1n1" => Some(String::from("static-soquartz")),
-        "tpi1n2" => Some(String::from("static-soquartz")),
-        "tpi1n3" => Some(String::from("static-soquartz")),
-        "tpi1n4" => Some(String::from("static-soquartz")),
-        "tpi2n1" => Some(String::from("static-soquartz")),
-        "tpi2n2" => Some(String::from("static-soquartz")),
-        "tpi2n3" => Some(String::from("static-soquartz")),
-        "tpi2n4" => Some(String::from("static-soquartz")),
-        "nuc-k3smstr.g2.gfpd.us" => Some(String::from("static-nuc")),
+        "k8snode05" => ignore.clone(),
+        "k8snode06" => ignore.clone(),
+        "k8snode07" => ignore.clone(),
+        "tpi1n1" => ignore.clone(),
+        "tpi1n2" => ignore.clone(),
+        "tpi1n3" => ignore.clone(),
+        "tpi1n4" => ignore.clone(),
+        "tpi2n1" => ignore.clone(),
+        "tpi2n2" => ignore.clone(),
+        "tpi2n3" => ignore.clone(),
+        "tpi2n4" => ignore.clone(),
+        "nuc-k3smstr.g2.gfpd.us" => ignore.clone(),
         _ => None,
     }
 }
@@ -170,12 +170,10 @@ impl CloudProvider for ImplementedCloudProvider {
         let mut resp = NodeGroupTargetSizeResponse::default();
         resp.target_size = count as i32;
         debug!(
-            "node group target size: Checking node group {}",
-            req.id.clone()
+            "node group target size: node group {} has {} size.",
+            req.id.clone(),
+            count
         );
-        if req.id.starts_with("static") {
-            resp.target_size = 1;
-        };
         Ok(Response::new(resp))
     }
 
@@ -264,7 +262,7 @@ impl CloudProvider for ImplementedCloudProvider {
             .map(|nodename| Instance {
                 id: nodename.to_owned(),
                 status: Some(InstanceStatus {
-                    instance_state: i32::from(InstanceState::InstanceCreating),
+                    instance_state: i32::from(InstanceState::InstanceRunning),
                     error_info: None,
                 }),
             })
@@ -379,10 +377,10 @@ impl CloudProvider for ImplementedCloudProvider {
         options.scale_down_gpu_utilization_threshold = 10 as f64;
         options.scale_down_utilization_threshold = 10 as f64;
         options.scale_down_unneeded_time = Some(Duration {
-            duration: Some(300),
+            duration: Some(300_000),
         });
         options.scale_down_unready_time = Some(Duration {
-            duration: Some(600),
+            duration: Some(900_000),
         });
         resp.node_group_autoscaling_options = Some(options);
         Ok(Response::new(resp))
