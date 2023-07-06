@@ -1,4 +1,4 @@
-use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::NodeGroup;
+use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::NodeGroup;
 use crate::vm_xml::{VM_XML, VOL_XML};
 use anyhow::{bail, Result};
 use lazy_static::lazy_static;
@@ -14,8 +14,7 @@ const MIN_SIZE: i32 = 1;
 const MAX_SIZE: i32 = 10;
 const VIRT_URI: &str = "qemu+ssh://root@10.174.5.25/system";
 
-const SOURCE_IMAGE_POOL: &str = "default";
-const SOURCE_IMAGE_KEY: &str = "/var/lib/libvirt/images/jammy-32g.qcow2";
+const IMAGE_POOL: &str = "default";
 
 lazy_static! {
     pub static ref NODE_GROUP_REGEX: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
@@ -28,6 +27,7 @@ pub async fn get_node_groups() -> Result<Vec<NodeGroup>> {
             bail!("Couldn't connect to libvirt!");
         }
     };
+
     match libvirt_node_groups(&conn) {
         Ok(v) => {
             disconnect(conn);
@@ -39,6 +39,54 @@ pub async fn get_node_groups() -> Result<Vec<NodeGroup>> {
             bail!("failure in converting libvirt domain list to nodegroups: {e}");
         }
     }
+}
+
+pub async fn libvirt_delete_node(node_name: String) -> Result<()> {
+    let conn = match connect_libvirt() {
+        Some(conn) => conn,
+        None => {
+            bail!("Couldn't connect to libvirt!");
+        }
+    };
+    let domain = match Domain::lookup_by_name(&conn, &node_name) {
+        Ok(d) => d,
+        Err(e) => {
+            disconnect(conn);
+            bail!("Couldn't find domain {}: {e}", node_name);
+        }
+    };
+    if let Err(e) = domain.destroy() {
+        bail!("Attempted to delete {} but received error: {e}", node_name);
+    }
+    if let Err(e) = domain.undefine() {
+        info!(
+            "{} wasn't able to be undefined, this is probably ok, however.  Error: {e}",
+            node_name
+        );
+    }
+    let default_pool = match StoragePool::lookup_by_name(&conn, IMAGE_POOL) {
+        Ok(d) => d,
+        Err(e) => {
+            disconnect(conn);
+            bail!("Can't find default storage pool: {e}");
+        }
+    };
+    let store =
+        match StorageVol::lookup_by_name(&default_pool, format!("{}.qcow2", node_name).as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                disconnect(conn);
+                bail!("Couldn't get storage volume for node {}: {e}", node_name);
+            }
+        };
+    if let Err(e) = store.delete(0) {
+        disconnect(conn);
+        bail!(
+            "We couldn't delete the storage volume for node {}: {e}",
+            node_name
+        );
+    };
+    Ok(())
 }
 
 pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> {
@@ -127,34 +175,29 @@ fn disconnect(mut conn: Connect) {
     debug!("Disconnected from libvirt");
 }
 
-pub fn create_instance() -> Result<()> {
+pub fn create_instance(node_group: String) -> Result<()> {
     let conn = match connect_libvirt() {
         Some(conn) => conn,
         None => {
             bail!("Couldn't connect to libvirt!");
         }
     };
-    let default_pool = match StoragePool::lookup_by_name(&conn, SOURCE_IMAGE_POOL) {
+    debug!("Getting storage pool...");
+    let default_pool = match StoragePool::lookup_by_name(&conn, IMAGE_POOL) {
         Ok(d) => d,
         Err(e) => {
             disconnect(conn);
             bail!("Can't find default storage pool: {e}");
         }
     };
-    let _source_image = match StorageVol::lookup_by_key(&conn, SOURCE_IMAGE_KEY) {
-        Ok(s) => s,
-        Err(e) => {
-            disconnect(conn);
-            bail!("Can't find jammy-32g.qcow2 source image: {e}");
-        }
-    };
 
     // decide on host details
     let uuid = Uuid::new_v4();
-    let hostname = format!("k8s-ng1-{uuid}");
+    let hostname = format!("k8s-{node_group}-{uuid}");
     let networkname = String::from("bridged-vlan-3");
 
     // create disk
+    debug!("Creating disk...");
     let volxml = String::from(VOL_XML).replace("HOSTNAME", &hostname);
     if let Err(e) = StorageVol::create_xml(&default_pool, &volxml, 0) {
         disconnect(conn);
@@ -162,6 +205,7 @@ pub fn create_instance() -> Result<()> {
     }
 
     // create vm
+    debug!("Creating vm...");
     let vmxml = String::from(VM_XML)
         .replace("HOSTNAME", &hostname)
         .replace("NETWORK-NAME", &networkname);

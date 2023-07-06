@@ -1,19 +1,22 @@
 use std::path::PathBuf;
+use tokio::time::sleep;
 use tonic::{Code, Request, Response, Status};
-pub mod external_grpc {
+pub mod protobufs {
     include!("../../proto/generated/mod.rs");
     pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
         tonic::include_file_descriptor_set!("externalgrpc_descriptor");
 }
 
-use external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::cloud_provider_server::{
+use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::cloud_provider_server::{
     CloudProvider, CloudProviderServer,
 };
 use tonic::transport::Server;
 use tonic::transport::{Identity, ServerTlsConfig};
-
-use crate::cloud_provider_impl::external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::Instance;
-use external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{
+use tokio::time::Duration as timeDuration;
+use protobufs::k8s::io::api::core::v1::{Node, NodeSpec, NodeStatus};
+use protobufs::k8s::io::apimachinery::pkg::api::resource::Quantity;
+use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::{Instance, NodeGroupAutoscalingOptions};
+use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::{
     CleanupRequest, CleanupResponse, GetAvailableGpuTypesRequest, GetAvailableGpuTypesResponse,
     GpuLabelRequest, GpuLabelResponse, NodeGroup, NodeGroupAutoscalingOptionsRequest,
     NodeGroupAutoscalingOptionsResponse, NodeGroupDecreaseTargetSizeRequest,
@@ -25,8 +28,14 @@ use external_grpc::clusterautoscaler::cloudprovider::v1::externalgrpc::{
     PricingNodePriceRequest, PricingNodePriceResponse, PricingPodPriceRequest,
     PricingPodPriceResponse, RefreshRequest, RefreshResponse,
 };
+use protobufs::k8s::io::apimachinery::pkg::apis::meta::v1::{Duration, ObjectMeta};
+use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::instance_status::InstanceState;
+use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::InstanceStatus;
 
-use crate::libvirt::{get_node_groups, get_nodes_in_node_group, NODE_GROUP_REGEX};
+use crate::libvirt::{
+    create_instance, get_node_groups, get_nodes_in_node_group, libvirt_delete_node,
+    NODE_GROUP_REGEX,
+};
 
 #[derive(Default)]
 pub struct ImplementedCloudProvider {}
@@ -35,7 +44,21 @@ fn get_nodegroup_from_string(input: String) -> Option<String> {
     for cap in NODE_GROUP_REGEX.captures_iter(&input) {
         return Some(String::from(&cap[1]));
     }
-    None
+    match input.as_str() {
+        "k8snode05" => Some(String::from("static-asrock")),
+        "k8snode06" => Some(String::from("static-asrock")),
+        "k8snode07" => Some(String::from("static-asrock")),
+        "tpi1n1" => Some(String::from("static-soquartz")),
+        "tpi1n2" => Some(String::from("static-soquartz")),
+        "tpi1n3" => Some(String::from("static-soquartz")),
+        "tpi1n4" => Some(String::from("static-soquartz")),
+        "tpi2n1" => Some(String::from("static-soquartz")),
+        "tpi2n2" => Some(String::from("static-soquartz")),
+        "tpi2n3" => Some(String::from("static-soquartz")),
+        "tpi2n4" => Some(String::from("static-soquartz")),
+        "nuc-k3smstr.g2.gfpd.us" => Some(String::from("static-nuc")),
+        _ => None,
+    }
 }
 
 #[tonic::async_trait]
@@ -44,12 +67,18 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupsRequest>,
     ) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
-        let ng: Vec<NodeGroup> = match get_node_groups().await {
-            Ok(n) => n,
-            Err(_e) => {
-                return Err(Status::new(Code::Unavailable, "error checking node groups"));
-            }
-        };
+        // let ng: Vec<NodeGroup> = match get_node_groups().await {
+        //     Ok(n) => n,
+        //     Err(_e) => {
+        //         return Err(Status::new(Code::Unavailable, "error checking node groups"));
+        //     }
+        // };
+        let ng: Vec<NodeGroup> = vec![NodeGroup {
+            id: "libvirt".to_string(),
+            min_size: 0,
+            max_size: 100,
+            debug: "".to_string(),
+        }];
 
         let resp: NodeGroupsResponse = NodeGroupsResponse { node_groups: ng };
         Ok(Response::new(resp))
@@ -65,6 +94,7 @@ impl CloudProvider for ImplementedCloudProvider {
         let mut response: NodeGroupForNodeResponse = NodeGroupForNodeResponse::default();
         let mut nodegroup: NodeGroup = NodeGroup::default();
         if let Some(node) = req.node {
+            debug!("node_group_for_node: Looking up {}", node.name);
             if let Some(node_group_name) = get_nodegroup_from_string(node.name) {
                 nodegroup.id = node_group_name.clone();
                 response.node_group = Some(nodegroup.clone());
@@ -128,30 +158,84 @@ impl CloudProvider for ImplementedCloudProvider {
 
     async fn node_group_target_size(
         &self,
-        _request: Request<NodeGroupTargetSizeRequest>,
+        request: Request<NodeGroupTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupTargetSizeResponse>, Status> {
-        todo!()
+        let req: NodeGroupTargetSizeRequest = request.into_inner();
+        let count = get_nodes_in_node_group(req.id.clone())
+            .await
+            .unwrap_or_else(|_| vec![])
+            .len();
+        let mut resp = NodeGroupTargetSizeResponse::default();
+        resp.target_size = count as i32;
+        debug!(
+            "node group target size: Checking node group {}",
+            req.id.clone()
+        );
+        if req.id.starts_with("static") {
+            resp.target_size = 1;
+        };
+        Ok(Response::new(resp))
     }
 
     async fn node_group_increase_size(
         &self,
-        _request: Request<NodeGroupIncreaseSizeRequest>,
+        request: Request<NodeGroupIncreaseSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupIncreaseSizeResponse>, Status> {
-        todo!()
+        let req = request.into_inner();
+        let node_group = req.id;
+        debug!(
+            "Received request to scale node group {}, delta:{}",
+            node_group.clone(),
+            &req.delta
+        );
+        for n in 0..req.delta {
+            match create_instance(node_group.clone()) {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Couldn't create node in {node_group}: {e}");
+                    return Err(Status::new(
+                        Code::Aborted,
+                        "Couldn't create instance in node_group {node_group",
+                    ));
+                }
+            }
+        }
+        debug!("Should sleep now for 120 seconds to give nodes time to warm up");
+        sleep(timeDuration::from_secs(12)).await;
+        debug!("I should have waited for 120 seconds");
+        let resp = NodeGroupIncreaseSizeResponse::default();
+        Ok(Response::new(resp))
     }
 
     async fn node_group_delete_nodes(
         &self,
-        _request: Request<NodeGroupDeleteNodesRequest>,
+        request: Request<NodeGroupDeleteNodesRequest>,
     ) -> std::result::Result<Response<NodeGroupDeleteNodesResponse>, Status> {
-        todo!()
+        let req = request.into_inner();
+        for node in req.nodes {
+            match libvirt_delete_node(node.name.clone()).await {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Could not delete node {}: {e}", node.name.clone());
+                    return Err(Status::new(
+                        Code::Aborted,
+                        format!("couldn't delete node {}: {e}", node.name),
+                    ));
+                }
+            }
+        }
+        let resp = NodeGroupDeleteNodesResponse::default();
+        Ok(Response::new(resp))
     }
 
     async fn node_group_decrease_target_size(
         &self,
         _request: Request<NodeGroupDecreaseTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupDecreaseTargetSizeResponse>, Status> {
-        todo!()
+        Err(Status::new(
+            Code::Unimplemented,
+            "node_group_decrease_target_size",
+        ))
     }
 
     async fn node_group_nodes(
@@ -173,7 +257,10 @@ impl CloudProvider for ImplementedCloudProvider {
             .iter()
             .map(|nodename| Instance {
                 id: nodename.to_owned(),
-                status: None,
+                status: Some(InstanceStatus {
+                    instance_state: i32::from(InstanceState::InstanceCreating),
+                    error_info: None,
+                }),
             })
             .collect();
         let mut response = NodeGroupNodesResponse::default();
@@ -183,22 +270,115 @@ impl CloudProvider for ImplementedCloudProvider {
 
     async fn node_group_template_node_info(
         &self,
-        _request: Request<NodeGroupTemplateNodeInfoRequest>,
+        request: Request<NodeGroupTemplateNodeInfoRequest>,
     ) -> std::result::Result<Response<NodeGroupTemplateNodeInfoResponse>, Status> {
-        Err(tonic::Status::new(
-            Code::Unimplemented,
-            "node_group_template_node_info not implemented",
-        ))
+        let req = request.into_inner();
+        debug!("{:#?}", req);
+        let mut resp = NodeGroupTemplateNodeInfoResponse::default();
+        let mut node = Node::default();
+        let mut node_spec = NodeSpec::default();
+        let mut metadata = ObjectMeta::default();
+        let fake_hostname = format!("k8s-{}-new", req.id);
+        metadata.labels.insert(
+            String::from("beta.kubernetes.io/arch"),
+            String::from("amd64"),
+        );
+        metadata.labels.insert(
+            String::from("beta.kubernetes.io/instance-type"),
+            String::from("k3s"),
+        );
+        metadata
+            .labels
+            .insert(String::from("beta.kubernetes.io/os"), String::from("linux"));
+        metadata
+            .labels
+            .insert(String::from("kubernetes.io/arch"), String::from("amd64"));
+        metadata
+            .labels
+            .insert(String::from("kubernetes.io/os"), String::from("linux"));
+        metadata.labels.insert(
+            String::from("kubernetes.io/hostname"),
+            fake_hostname.clone(),
+        );
+        metadata.labels.insert(
+            String::from("node.kubernetes.io/instance-type"),
+            String::from("k3s"),
+        );
+
+        metadata.name = Some(fake_hostname.clone());
+        node_spec.unschedulable = Some(false);
+        node_spec.provider_id = Some(String::from("libvirt://{fake_hostname}"));
+        let mut node_status = NodeStatus::default();
+        node_status.allocatable.insert(
+            String::from("cpu"),
+            Quantity {
+                string: Some(String::from("8")),
+            },
+        );
+        node_status.allocatable.insert(
+            String::from("memory"),
+            Quantity {
+                string: Some(String::from("8127028Ki")),
+            },
+        );
+        node_status.allocatable.insert(
+            String::from("pods"),
+            Quantity {
+                string: Some(String::from("110")),
+            },
+        );
+        node_status.capacity.insert(
+            String::from("cpu"),
+            Quantity {
+                string: Some(String::from("8")),
+            },
+        );
+        node_status.capacity.insert(
+            String::from("memory"),
+            Quantity {
+                string: Some(String::from("8127028Ki")),
+            },
+        );
+        node_status.capacity.insert(
+            String::from("pods"),
+            Quantity {
+                string: Some(String::from("110")),
+            },
+        );
+        node.status = Some(node_status);
+        node.spec = Some(node_spec);
+        node.metadata = Some(metadata);
+        //TODO: don't hardcode this
+        match req.id.as_str() {
+            "libvirt" => resp.node_info = Some(node),
+            _ => {
+                return Err(tonic::Status::new(
+                    Code::NotFound,
+                    format!("node info entry {} not found", req.id),
+                ));
+            }
+        };
+        Ok(Response::new(resp))
     }
 
     async fn node_group_get_options(
         &self,
-        _request: Request<NodeGroupAutoscalingOptionsRequest>,
+        request: Request<NodeGroupAutoscalingOptionsRequest>,
     ) -> std::result::Result<Response<NodeGroupAutoscalingOptionsResponse>, Status> {
-        Err(tonic::Status::new(
-            Code::Unimplemented,
-            "node_group_get_options not implemented",
-        ))
+        let req = request.into_inner();
+        let mut resp = NodeGroupAutoscalingOptionsResponse::default();
+        let mut options = NodeGroupAutoscalingOptions::default();
+        //TODO: make this configurable
+        options.scale_down_gpu_utilization_threshold = 10 as f64;
+        options.scale_down_utilization_threshold = 10 as f64;
+        options.scale_down_unneeded_time = Some(Duration {
+            duration: Some(300),
+        });
+        options.scale_down_unready_time = Some(Duration {
+            duration: Some(600),
+        });
+        resp.node_group_autoscaling_options = Some(options);
+        Ok(Response::new(resp))
     }
 }
 
@@ -214,7 +394,7 @@ pub async fn serve(
     let key = std::fs::read_to_string(key_path).ok();
 
     let service = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(external_grpc::FILE_DESCRIPTOR_SET)
+        .register_encoded_file_descriptor_set(protobufs::FILE_DESCRIPTOR_SET)
         .build()
         .unwrap();
 
@@ -223,6 +403,7 @@ pub async fn serve(
         .tls_config(
             ServerTlsConfig::new().identity(Identity::from_pem(&cert.unwrap(), &key.unwrap())),
         )?
+        .http2_keepalive_interval(Some(timeDuration::from_secs(1)))
         .add_service(service)
         .add_service(CloudProviderServer::new(foo))
         .serve(addr)

@@ -2,5 +2,7 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/proto/k8s.io/api" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/proto/k8s.io/apimachinery" vcs="Git" />
   </component>
 </project>

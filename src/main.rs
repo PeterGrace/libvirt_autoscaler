@@ -9,8 +9,8 @@ async fn main() {
     info!("Starting libvirt-autoscaler.");
     let _ = dotenv::from_path("./.env");
     tracing_subscriber::fmt::init();
-    let cert_path: PathBuf = PathBuf::from("tls/localhost.crt");
-    let key_path: PathBuf = PathBuf::from("tls/localhost.key");
+    let cert_path: PathBuf = PathBuf::from("tls/pgdev.crt");
+    let key_path: PathBuf = PathBuf::from("tls/pgdev.key");
 
     let _ = serve(String::from("[::]"), 50051, cert_path, key_path).await;
 }
