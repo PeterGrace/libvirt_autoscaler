@@ -32,7 +32,7 @@ use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1:
 use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::InstanceStatus;
 
 use crate::libvirt::{
-    create_instance, get_node_groups, get_nodes_in_node_group, libvirt_delete_node,
+    create_instance, get_nodes_in_node_group, libvirt_delete_node,
     NODE_GROUP_REGEX,
 };
 
@@ -66,12 +66,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupsRequest>,
     ) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
-        // let ng: Vec<NodeGroup> = match get_node_groups().await {
-        //     Ok(n) => n,
-        //     Err(_e) => {
-        //         return Err(Status::new(Code::Unavailable, "error checking node groups"));
-        //     }
-        // };
+        debug!(?_request, "call to node_groups");
         let ng: Vec<NodeGroup> = vec![NodeGroup {
             id: "libvirt".to_string(),
             min_size: 0,
@@ -89,6 +84,7 @@ impl CloudProvider for ImplementedCloudProvider {
     ) -> std::result::Result<Response<NodeGroupForNodeResponse>, Status> {
         // this implementation may need additional logic as you can return null string as node group to indicate a node
         // should be ignored.
+        //debug!(?_request, "call to node_group_for_node");
         let req = _request.into_inner();
         let mut response: NodeGroupForNodeResponse = NodeGroupForNodeResponse::default();
         let mut nodegroup: NodeGroup = NodeGroup::default();
@@ -107,6 +103,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<PricingNodePriceRequest>,
     ) -> std::result::Result<Response<PricingNodePriceResponse>, Status> {
+        debug!(?_request, "call to pricing_node_price");
         Err(tonic::Status::new(
             Code::Unimplemented,
             "pricing_node_price not implemented",
@@ -117,6 +114,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<PricingPodPriceRequest>,
     ) -> std::result::Result<Response<PricingPodPriceResponse>, Status> {
+        debug!(?_request, "call to pricing_pod_price");
         Err(tonic::Status::new(
             Code::Unimplemented,
             "pricing_pod_price not implemented",
@@ -127,6 +125,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<GpuLabelRequest>,
     ) -> std::result::Result<Response<GpuLabelResponse>, Status> {
+        debug!(?_request, "call to gpu_label");
         let mut resp = GpuLabelResponse::default();
         resp.label = String::from("libvirt-autoscaler-gpu-type");
         Ok(Response::new(resp))
@@ -137,6 +136,7 @@ impl CloudProvider for ImplementedCloudProvider {
         _request: Request<GetAvailableGpuTypesRequest>,
     ) -> std::result::Result<Response<GetAvailableGpuTypesResponse>, Status> {
         // return no gpus at the moment until/when I figure out how to do libvirt/kvm gpu passthrough
+        debug!(?_request, "call to get_available_gpu_types");
         let resp = GetAvailableGpuTypesResponse::default();
         Ok(Response::new(resp))
     }
@@ -145,6 +145,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<CleanupRequest>,
     ) -> std::result::Result<Response<CleanupResponse>, Status> {
+        debug!(?_request, "call to cleanup()");
         Ok(Response::new(CleanupResponse::default()))
     }
 
@@ -152,6 +153,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<RefreshRequest>,
     ) -> std::result::Result<Response<RefreshResponse>, Status> {
+        debug!(?_request, "call to refresh()");
         Ok(Response::new(RefreshResponse::default()))
     }
 
@@ -159,6 +161,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupTargetSizeResponse>, Status> {
+        debug!(?request, "call to node_group_target_size()");
         let req: NodeGroupTargetSizeRequest = request.into_inner();
         let count = get_nodes_in_node_group(req.id.clone())
             .await
@@ -180,6 +183,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupIncreaseSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupIncreaseSizeResponse>, Status> {
+        debug!(?request, "call to node_group_increase_size()");
         let req = request.into_inner();
         let node_group = req.id;
         debug!(
@@ -187,7 +191,7 @@ impl CloudProvider for ImplementedCloudProvider {
             node_group.clone(),
             &req.delta
         );
-        for n in 0..req.delta {
+        for _n in 0..req.delta {
             match create_instance(node_group.clone()) {
                 Ok(_) => {}
                 Err(e) => {
@@ -210,6 +214,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupDeleteNodesRequest>,
     ) -> std::result::Result<Response<NodeGroupDeleteNodesResponse>, Status> {
+        debug!(?request, "call to node_group_delete_nodes()");
         let req = request.into_inner();
         for node in req.nodes {
             match libvirt_delete_node(node.name.clone()).await {
@@ -231,6 +236,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupDecreaseTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupDecreaseTargetSizeResponse>, Status> {
+        debug!(?_request, "call to node_group_decrease_target_size()");
         Err(Status::new(
             Code::Unimplemented,
             "node_group_decrease_target_size",
@@ -241,6 +247,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupNodesRequest>,
     ) -> std::result::Result<Response<NodeGroupNodesResponse>, Status> {
+        debug!(?_request, "call to node_group_nodes()");
         let req = _request.into_inner();
         let nodelist = match get_nodes_in_node_group(req.id).await {
             Ok(v) => v,
@@ -264,6 +271,7 @@ impl CloudProvider for ImplementedCloudProvider {
             .collect();
         let mut response = NodeGroupNodesResponse::default();
         response.instances = instances;
+        debug!(?response, "Sending list in node_group_nodes");
         Ok(Response::new(response))
     }
 
@@ -271,8 +279,8 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupTemplateNodeInfoRequest>,
     ) -> std::result::Result<Response<NodeGroupTemplateNodeInfoResponse>, Status> {
+        debug!(?request, "call to node_group_template_node_info");
         let req = request.into_inner();
-        debug!("{:#?}", req);
         let mut resp = NodeGroupTemplateNodeInfoResponse::default();
         let mut node = Node::default();
         let mut node_spec = NodeSpec::default();
@@ -364,7 +372,7 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupAutoscalingOptionsRequest>,
     ) -> std::result::Result<Response<NodeGroupAutoscalingOptionsResponse>, Status> {
-        let req = request.into_inner();
+        debug!(?request, "call to node_group_get_options");
         let mut resp = NodeGroupAutoscalingOptionsResponse::default();
         let mut options = NodeGroupAutoscalingOptions::default();
         //TODO: make this configurable
