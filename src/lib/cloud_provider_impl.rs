@@ -1,4 +1,9 @@
+use core::time::Duration as sysDuration;
+use std::collections::HashMap;
+use std::ops::Add;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tonic::{Code, Request, Response, Status};
 pub mod protobufs {
     include!("../../proto/generated/mod.rs");
@@ -6,15 +11,14 @@ pub mod protobufs {
         tonic::include_file_descriptor_set!("externalgrpc_descriptor");
 }
 
+use crate::libvirt::{
+    create_instance, get_nodes_in_node_group, libvirt_delete_node, NODE_GROUP_REGEX,
+};
 use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::cloud_provider_server::{
     CloudProvider, CloudProviderServer,
 };
-use tonic::transport::Server;
-use tonic::transport::{Identity, ServerTlsConfig};
-use tokio::time::Duration as timeDuration;
-use protobufs::k8s::io::api::core::v1::{Node, NodeSpec, NodeStatus};
-use protobufs::k8s::io::apimachinery::pkg::api::resource::Quantity;
-use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::{Instance, NodeGroupAutoscalingOptions};
+use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::instance_status::InstanceState;
+use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::InstanceStatus;
 use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::{
     CleanupRequest, CleanupResponse, GetAvailableGpuTypesRequest, GetAvailableGpuTypesResponse,
     GpuLabelRequest, GpuLabelResponse, NodeGroup, NodeGroupAutoscalingOptionsRequest,
@@ -27,16 +31,20 @@ use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::{
     PricingNodePriceRequest, PricingNodePriceResponse, PricingPodPriceRequest,
     PricingPodPriceResponse, RefreshRequest, RefreshResponse,
 };
-use protobufs::k8s::io::apimachinery::pkg::apis::meta::v1::{Duration, ObjectMeta};
-use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::instance_status::InstanceState;
-use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::InstanceStatus;
-
-use crate::libvirt::{
-    create_instance, get_nodes_in_node_group, libvirt_delete_node, NODE_GROUP_REGEX,
+use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::{
+    Instance, NodeGroupAutoscalingOptions,
 };
+use protobufs::k8s::io::api::core::v1::{Node, NodeSpec, NodeStatus};
+use protobufs::k8s::io::apimachinery::pkg::api::resource::Quantity;
+use protobufs::k8s::io::apimachinery::pkg::apis::meta::v1::{Duration, ObjectMeta};
+use tokio::time::Duration as timeDuration;
+use tonic::transport::Server;
+use tonic::transport::{Identity, ServerTlsConfig};
 
 #[derive(Default)]
-pub struct ImplementedCloudProvider {}
+pub struct ImplementedCloudProvider {
+    machine_count: Arc<Mutex<HashMap<String, i32>>>,
+}
 
 fn get_nodegroup_from_string(input: String) -> Option<String> {
     for cap in NODE_GROUP_REGEX.captures_iter(&input) {
@@ -89,9 +97,10 @@ impl CloudProvider for ImplementedCloudProvider {
         let mut response: NodeGroupForNodeResponse = NodeGroupForNodeResponse::default();
         let mut nodegroup: NodeGroup = NodeGroup::default();
         if let Some(node) = req.node {
-            debug!("node_group_for_node: Looking up {}", node.name);
+            debug!(?node, "node_group_for_node: Looking up {}", node.name);
             if let Some(node_group_name) = get_nodegroup_from_string(node.name) {
                 nodegroup.id = node_group_name.clone();
+
                 response.node_group = Some(nodegroup.clone());
                 return Ok(Response::new(response));
             }
@@ -154,6 +163,26 @@ impl CloudProvider for ImplementedCloudProvider {
         _request: Request<RefreshRequest>,
     ) -> std::result::Result<Response<RefreshResponse>, Status> {
         debug!(?_request, "call to refresh()");
+        //TODO: make this more dynamic, also in get_node_groups logic
+        let node_groups = vec!["libvirt"];
+        for ng in node_groups {
+            let current_count = get_nodes_in_node_group(String::from(ng))
+                .await
+                .unwrap_or_else(|_| vec![])
+                .len() as i32;
+            let machinecount = self.machine_count.lock().await;
+            let requested_count = machinecount.get(ng).unwrap_or(&0);
+            if requested_count > &current_count {
+                for _n in current_count..requested_count + 1 {
+                    match create_instance(String::from(ng)).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("Couldn't create node in {ng}: {e}");
+                        }
+                    }
+                }
+            }
+        }
         Ok(Response::new(RefreshResponse::default()))
     }
 
@@ -189,21 +218,9 @@ impl CloudProvider for ImplementedCloudProvider {
             node_group.clone(),
             &req.delta
         );
-        for _n in 0..req.delta {
-            match create_instance(node_group.clone()) {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("Couldn't create node in {node_group}: {e}");
-                    return Err(Status::new(
-                        Code::Aborted,
-                        "Couldn't create instance in node_group {node_group",
-                    ));
-                }
-            }
-        }
-        //debug!("Should sleep now for 120 seconds to give nodes time to warm up");
-        //sleep(timeDuration::from_secs(120)).await;
-        //debug!("I should have waited for 120 seconds");
+
+        let mut machinecount = self.machine_count.lock().await;
+        machinecount.insert(node_group, req.delta);
         let resp = NodeGroupIncreaseSizeResponse::default();
         Ok(Response::new(resp))
     }
@@ -232,13 +249,21 @@ impl CloudProvider for ImplementedCloudProvider {
 
     async fn node_group_decrease_target_size(
         &self,
-        _request: Request<NodeGroupDecreaseTargetSizeRequest>,
+        request: Request<NodeGroupDecreaseTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupDecreaseTargetSizeResponse>, Status> {
-        debug!(?_request, "call to node_group_decrease_target_size()");
-        Err(Status::new(
-            Code::Unimplemented,
-            "node_group_decrease_target_size",
-        ))
+        debug!(?request, "call to node_group_decrease_size()");
+        let req = request.into_inner();
+        let node_group = req.id;
+        debug!(
+            "Received request to decrease size of node group {}, delta:{}",
+            node_group.clone(),
+            &req.delta
+        );
+
+        let mut machinecount = self.machine_count.lock().await;
+        machinecount.insert(node_group, req.delta);
+        let resp = NodeGroupDecreaseTargetSizeResponse::default();
+        Ok(Response::new(resp))
     }
 
     async fn node_group_nodes(
@@ -374,15 +399,19 @@ impl CloudProvider for ImplementedCloudProvider {
         let mut resp = NodeGroupAutoscalingOptionsResponse::default();
         let mut options = NodeGroupAutoscalingOptions::default();
         //TODO: make this configurable
-        options.scale_down_gpu_utilization_threshold = 10 as f64;
-        options.scale_down_utilization_threshold = 10 as f64;
+        options.scale_down_gpu_utilization_threshold = 0 as f64;
+        options.scale_down_utilization_threshold = 0 as f64;
         options.scale_down_unneeded_time = Some(Duration {
-            duration: Some(300_000),
+            duration: Some(sysDuration::from_secs(300).as_nanos() as i64),
         });
         options.scale_down_unready_time = Some(Duration {
-            duration: Some(900_000),
+            duration: Some(sysDuration::from_secs(600).as_nanos() as i64),
+        });
+        options.max_node_provision_time = Some(Duration {
+            duration: Some(sysDuration::from_secs(300).as_nanos() as i64),
         });
         resp.node_group_autoscaling_options = Some(options);
+        debug!(?request, "RESPONDING to node group get options with...");
         Ok(Response::new(resp))
     }
 }

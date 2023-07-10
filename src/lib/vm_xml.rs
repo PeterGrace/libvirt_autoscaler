@@ -81,6 +81,7 @@ pub(crate) const VM_XML: &str = r###"
 pub(crate) const VOL_XML: &str = r###"
     <volume type='file'>
         <name>HOSTNAME.qcow2</name>
+        <capacity unit='bytes'>68719476736</capacity>
         <key>/var/lib/libvirt/images/HOSTNAME.qcow2</key>
         <target>
         <path>/var/lib/libvirt/images/HOSTNAME.qcow2</path>

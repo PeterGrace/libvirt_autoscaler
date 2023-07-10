@@ -175,7 +175,7 @@ fn disconnect(mut conn: Connect) {
     debug!("Disconnected from libvirt");
 }
 
-pub fn create_instance(node_group: String) -> Result<()> {
+pub async fn create_instance(node_group: String) -> Result<()> {
     let conn = match connect_libvirt() {
         Some(conn) => conn,
         None => {
