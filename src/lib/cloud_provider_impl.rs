@@ -74,7 +74,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupsRequest>,
     ) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
-        debug!(?_request, "call to node_groups");
         let ng: Vec<NodeGroup> = vec![NodeGroup {
             id: "libvirt".to_string(),
             min_size: 0,
@@ -92,12 +91,10 @@ impl CloudProvider for ImplementedCloudProvider {
     ) -> std::result::Result<Response<NodeGroupForNodeResponse>, Status> {
         // this implementation may need additional logic as you can return null string as node group to indicate a node
         // should be ignored.
-        //debug!(?_request, "call to node_group_for_node");
         let req = _request.into_inner();
         let mut response: NodeGroupForNodeResponse = NodeGroupForNodeResponse::default();
         let mut nodegroup: NodeGroup = NodeGroup::default();
         if let Some(node) = req.node {
-            debug!(?node, "node_group_for_node: Looking up {}", node.name);
             if let Some(node_group_name) = get_nodegroup_from_string(node.name) {
                 nodegroup.id = node_group_name.clone();
 
@@ -112,7 +109,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<PricingNodePriceRequest>,
     ) -> std::result::Result<Response<PricingNodePriceResponse>, Status> {
-        debug!(?_request, "call to pricing_node_price");
         Err(tonic::Status::new(
             Code::Unimplemented,
             "pricing_node_price not implemented",
@@ -123,7 +119,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<PricingPodPriceRequest>,
     ) -> std::result::Result<Response<PricingPodPriceResponse>, Status> {
-        debug!(?_request, "call to pricing_pod_price");
         Err(tonic::Status::new(
             Code::Unimplemented,
             "pricing_pod_price not implemented",
@@ -134,7 +129,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<GpuLabelRequest>,
     ) -> std::result::Result<Response<GpuLabelResponse>, Status> {
-        debug!(?_request, "call to gpu_label");
         let mut resp = GpuLabelResponse::default();
         resp.label = String::from("libvirt-autoscaler-gpu-type");
         Ok(Response::new(resp))
@@ -145,7 +139,6 @@ impl CloudProvider for ImplementedCloudProvider {
         _request: Request<GetAvailableGpuTypesRequest>,
     ) -> std::result::Result<Response<GetAvailableGpuTypesResponse>, Status> {
         // return no gpus at the moment until/when I figure out how to do libvirt/kvm gpu passthrough
-        debug!(?_request, "call to get_available_gpu_types");
         let resp = GetAvailableGpuTypesResponse::default();
         Ok(Response::new(resp))
     }
@@ -154,7 +147,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<CleanupRequest>,
     ) -> std::result::Result<Response<CleanupResponse>, Status> {
-        debug!(?_request, "call to cleanup()");
         Ok(Response::new(CleanupResponse::default()))
     }
 
@@ -162,7 +154,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<RefreshRequest>,
     ) -> std::result::Result<Response<RefreshResponse>, Status> {
-        debug!(?_request, "call to refresh()");
         //TODO: make this more dynamic, also in get_node_groups logic
         let node_groups = vec!["libvirt"];
         for ng in node_groups {
@@ -190,7 +181,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupTargetSizeResponse>, Status> {
-        debug!(?request, "call to node_group_target_size()");
         let req: NodeGroupTargetSizeRequest = request.into_inner();
         let count = get_nodes_in_node_group(req.id.clone())
             .await
@@ -210,10 +200,9 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupIncreaseSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupIncreaseSizeResponse>, Status> {
-        debug!(?request, "call to node_group_increase_size()");
         let req = request.into_inner();
         let node_group = req.id;
-        debug!(
+        info!(
             "Received request to scale node group {}, delta:{}",
             node_group.clone(),
             &req.delta
@@ -229,11 +218,12 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupDeleteNodesRequest>,
     ) -> std::result::Result<Response<NodeGroupDeleteNodesResponse>, Status> {
-        debug!(?request, "call to node_group_delete_nodes()");
         let req = request.into_inner();
         for node in req.nodes {
             match libvirt_delete_node(node.name.clone()).await {
-                Ok(_) => {}
+                Ok(_) => {
+                    info!("Deleted node {}", node.name.clone());
+                }
                 Err(e) => {
                     error!("Could not delete node {}: {e}", node.name.clone());
                     return Err(Status::new(
@@ -251,10 +241,9 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupDecreaseTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupDecreaseTargetSizeResponse>, Status> {
-        debug!(?request, "call to node_group_decrease_size()");
         let req = request.into_inner();
         let node_group = req.id;
-        debug!(
+        info!(
             "Received request to decrease size of node group {}, delta:{}",
             node_group.clone(),
             &req.delta
@@ -270,7 +259,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupNodesRequest>,
     ) -> std::result::Result<Response<NodeGroupNodesResponse>, Status> {
-        debug!(?_request, "call to node_group_nodes()");
         let req = _request.into_inner();
         let nodelist = match get_nodes_in_node_group(req.id).await {
             Ok(v) => v,
@@ -285,7 +273,7 @@ impl CloudProvider for ImplementedCloudProvider {
         let instances: Vec<Instance> = nodelist
             .iter()
             .map(|nodename| Instance {
-                id: nodename.to_owned(),
+                id: format!("k3s://{}", nodename.to_owned()),
                 status: Some(InstanceStatus {
                     instance_state: i32::from(InstanceState::InstanceRunning),
                     error_info: None,
@@ -294,7 +282,6 @@ impl CloudProvider for ImplementedCloudProvider {
             .collect();
         let mut response = NodeGroupNodesResponse::default();
         response.instances = instances;
-        debug!(?response, "Sending list in node_group_nodes");
         Ok(Response::new(response))
     }
 
@@ -302,7 +289,6 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupTemplateNodeInfoRequest>,
     ) -> std::result::Result<Response<NodeGroupTemplateNodeInfoResponse>, Status> {
-        debug!(?request, "call to node_group_template_node_info");
         let req = request.into_inner();
         let mut resp = NodeGroupTemplateNodeInfoResponse::default();
         let mut node = Node::default();
@@ -395,23 +381,21 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         request: Request<NodeGroupAutoscalingOptionsRequest>,
     ) -> std::result::Result<Response<NodeGroupAutoscalingOptionsResponse>, Status> {
-        debug!(?request, "call to node_group_get_options");
         let mut resp = NodeGroupAutoscalingOptionsResponse::default();
         let mut options = NodeGroupAutoscalingOptions::default();
         //TODO: make this configurable
-        options.scale_down_gpu_utilization_threshold = 0 as f64;
-        options.scale_down_utilization_threshold = 0 as f64;
+        options.scale_down_gpu_utilization_threshold = 10 as f64;
+        options.scale_down_utilization_threshold = 10 as f64;
         options.scale_down_unneeded_time = Some(Duration {
             duration: Some(sysDuration::from_secs(300).as_nanos() as i64),
         });
         options.scale_down_unready_time = Some(Duration {
-            duration: Some(sysDuration::from_secs(600).as_nanos() as i64),
+            duration: Some(sysDuration::from_secs(180).as_nanos() as i64),
         });
         options.max_node_provision_time = Some(Duration {
-            duration: Some(sysDuration::from_secs(300).as_nanos() as i64),
+            duration: Some(sysDuration::from_secs(180).as_nanos() as i64),
         });
         resp.node_group_autoscaling_options = Some(options);
-        debug!(?request, "RESPONDING to node group get options with...");
         Ok(Response::new(resp))
     }
 }
@@ -432,7 +416,6 @@ pub async fn serve(
         .build()
         .unwrap();
 
-    debug!("pre-serve-builder.");
     let server = Server::builder()
         .tls_config(
             ServerTlsConfig::new().identity(Identity::from_pem(&cert.unwrap(), &key.unwrap())),
@@ -442,6 +425,5 @@ pub async fn serve(
         .add_service(CloudProviderServer::new(foo))
         .serve(addr)
         .await;
-    debug!("post-serve-builder.");
     Ok(server.unwrap())
 }

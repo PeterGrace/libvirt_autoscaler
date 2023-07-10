@@ -25,6 +25,7 @@ anyhow = "1.0.71"
 tokio = { version = "1.0", features = ["parking_lot", "sync", "tracing", "rt-multi-thread", "macros"] }
 regex = "1.8.4"
 lazy_static = "1.4.0"
+config = { version = "0.13.3", features = ["toml"] }
 
 [dependencies.uuid]
 version = "1.4.0"
