@@ -7,8 +7,9 @@ use tokio::sync::Mutex;
 use tonic::{Code, Request, Response, Status};
 pub mod protobufs {
     include!("../../proto/generated/mod.rs");
-    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
-        tonic::include_file_descriptor_set!("externalgrpc_descriptor");
+    // // this was needed for grpc reflection api but not needed by default
+    //    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
+    //        tonic::include_file_descriptor_set!("externalgrpc_descriptor");
 }
 
 use crate::libvirt::{
@@ -412,7 +413,8 @@ pub async fn serve(
     let key = std::fs::read_to_string(key_path).ok();
 
     let service = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(protobufs::FILE_DESCRIPTOR_SET)
+        // only needed if using reflection api
+        //        .register_encoded_file_descriptor_set(protobufs::FILE_DESCRIPTOR_SET)
         .build()
         .unwrap();
 

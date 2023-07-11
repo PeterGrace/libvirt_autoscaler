@@ -5,9 +5,12 @@ registry := "reg.gfpd.us"
 image := "library/libvirt_autoscaler"
 tag := `git describe --tags || echo dev`
 
+with-protos:
+  GENERATE_PROTOS=true cargo build
+
 build:
-  cross build --release --target aarch64-unknown-linux-gnu
   cross build --release --target x86_64-unknown-linux-gnu
+  cross build --release --target aarch64-unknown-linux-gnu
 make-image:
   docker buildx build --no-cache --push --platform linux/amd64,linux/arm64/v8 \
   -t {{registry}}/{{image}}:latest \
