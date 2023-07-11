@@ -1,6 +1,6 @@
 use core::time::Duration as sysDuration;
 use std::collections::HashMap;
-use std::ops::Add;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -380,7 +380,7 @@ impl CloudProvider for ImplementedCloudProvider {
 
     async fn node_group_get_options(
         &self,
-        request: Request<NodeGroupAutoscalingOptionsRequest>,
+        _request: Request<NodeGroupAutoscalingOptionsRequest>,
     ) -> std::result::Result<Response<NodeGroupAutoscalingOptionsResponse>, Status> {
         let mut resp = NodeGroupAutoscalingOptionsResponse::default();
         let mut options = NodeGroupAutoscalingOptions::default();
