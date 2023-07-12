@@ -1,5 +1,5 @@
 use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::NodeGroup;
-use crate::vm_xml::{VM_XML, VOL_XML};
+use crate::xml_consts::{VM_XML, VOL_XML};
 use anyhow::{bail, Result};
 use lazy_static::lazy_static;
 use regex::Regex;

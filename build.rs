@@ -2,6 +2,8 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rustc-link-lib=dylib=virt");
+
     let run_build = env::var("GENERATE_PROTOS")
         .map(|v| v == "1")
         .unwrap_or(false);

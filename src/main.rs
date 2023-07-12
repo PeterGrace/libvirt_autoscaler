@@ -1,16 +1,36 @@
 #[macro_use]
 extern crate tracing;
+
 use libvirt_autoscaler::cloud_provider_impl::serve;
-use std::path::PathBuf;
+use std::env;
 
 #[tokio::main]
 async fn main() {
     // setup logging
     info!("Starting libvirt-autoscaler.");
-    let _ = dotenv::from_path("./.env");
+    let cfg_file = match std::env::var("CONFIG_FILE_PATH") {
+        Ok(s) => s,
+        Err(_e) => "./config.toml".to_string(),
+    };
+    let settings = match config::Config::builder()
+        .add_source(config::File::with_name(&cfg_file))
+        .add_source(
+            config::Environment::with_prefix("LIBVIRT_AUTOSCALER")
+                .try_parsing(true)
+                .list_separator(","),
+        )
+        .build()
+    {
+        Ok(s) => s,
+        Err(e) => {
+            panic!("{e}");
+        }
+    };
+    match settings.get_string("log_level") {
+        Ok(s) => env::set_var("RUST_LOG", s),
+        Err(_) => env::set_var("RUST_LOG", "info"),
+    }
     tracing_subscriber::fmt::init();
-    let cert_path: PathBuf = PathBuf::from("tls/pgdev.crt");
-    let key_path: PathBuf = PathBuf::from("tls/pgdev.key");
 
-    let _ = serve(String::from("[::]"), 50051, cert_path, key_path).await;
+    let _ = serve(settings).await;
 }
