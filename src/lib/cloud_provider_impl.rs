@@ -9,7 +9,8 @@ use crate::libvirt::{
     create_instance, get_nodes_in_node_group, libvirt_delete_node, NODE_GROUP_REGEX,
 };
 use crate::node_template::generate_node_template;
-use config::{Config, Value};
+use crate::SETTINGS;
+use config::{Config, Value, ValueKind};
 use core::time::Duration as sysDuration;
 use once_cell::sync::OnceCell;
 use protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::cloud_provider_server::{
@@ -45,7 +46,7 @@ use tonic::transport::Server;
 use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{Code, Request, Response, Status};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ImplementedNodeGroup {
     node_group: NodeGroup,
     options: NodeGroupAutoscalingOptions,
@@ -54,14 +55,13 @@ pub struct ImplementedNodeGroup {
 
 #[derive(Default)]
 pub struct ImplementedCloudProvider {
-    config: RwLock<Config>,
     node_groups: Arc<Mutex<HashMap<String, ImplementedNodeGroup>>>,
     machine_count: Arc<Mutex<HashMap<String, i32>>>,
 }
 impl ImplementedCloudProvider {
-    fn new(_config: Config) -> Self {
+    fn new() -> Self {
         let mut groupopts: HashMap<String, ImplementedNodeGroup> = HashMap::new();
-        let nodegroups: Vec<Value> = _config.get_array("node_groups").unwrap();
+        let nodegroups: Vec<Value> = SETTINGS.read().unwrap().get_array("node_groups").unwrap();
         for ng in nodegroups {
             let table = match ng.into_table() {
                 Ok(t) => t,
@@ -78,16 +78,17 @@ impl ImplementedCloudProvider {
                 .expect("Couldn't read name of node group in node_groups");
             let min_size: i32 = table
                 .get("min_nodes")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::I64(0)))
                 .clone()
                 .into_int()
-                .unwrap_or(0) as i32;
+                .unwrap() as i32;
+
             let max_size: i32 = table
                 .get("max_nodes")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::I64(0)))
                 .clone()
                 .into_int()
-                .unwrap_or(0) as i32;
+                .unwrap() as i32;
             let node_group_object: NodeGroup = NodeGroup {
                 id: id.clone(),
                 min_size,
@@ -95,36 +96,37 @@ impl ImplementedCloudProvider {
                 debug: String::from(""),
             };
             // Create an AutoScalingOptions object
+
             let scale_down_utilization_threshold: f64 = table
                 .get("scale_down_utilization_threshold")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::Float(0.0)))
                 .clone()
                 .into_float()
                 .unwrap_or(0.0);
             let scale_down_gpu_utilization_threshold: f64 = table
                 .get("scale_down_gpu_utilization_threshold")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::Float(0.0)))
                 .clone()
                 .into_float()
                 .unwrap_or(0.0);
             let scale_down_unneeded_time_secs: i64 = table
                 .get("scale_down_unneeded_after_secs")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::I64(0)))
                 .clone()
                 .into_int()
-                .unwrap_or(300);
+                .unwrap();
             let scale_down_unready_time_secs: i64 = table
                 .get("scale_down_unready_after_secs")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::I64(0)))
                 .clone()
                 .into_int()
-                .unwrap_or(300);
+                .unwrap();
             let max_node_provision_time_secs: i64 = table
                 .get("max_node_provisioning_time_secs")
-                .unwrap()
+                .unwrap_or(&Value::new(None, ValueKind::I64(0)))
                 .clone()
                 .into_int()
-                .unwrap_or(300);
+                .unwrap();
             let node_group_autoscaling_options: NodeGroupAutoscalingOptions =
                 NodeGroupAutoscalingOptions {
                     scale_down_utilization_threshold,
@@ -157,7 +159,6 @@ impl ImplementedCloudProvider {
             groupopts.insert(id, ing);
         }
         ImplementedCloudProvider {
-            config: RwLock::new(_config),
             node_groups: Arc::new(Mutex::new(groupopts)),
             machine_count: Arc::new(Default::default()),
         }
@@ -179,13 +180,12 @@ impl CloudProvider for ImplementedCloudProvider {
         &self,
         _request: Request<NodeGroupsRequest>,
     ) -> std::result::Result<Response<NodeGroupsResponse>, Status> {
-        let ng: Vec<NodeGroup> = vec![NodeGroup {
-            id: "libvirt".to_string(),
-            min_size: 0,
-            max_size: 100,
-            debug: "".to_string(),
-        }];
-
+        let node_group_list = self.node_groups.lock().await;
+        let ng: Vec<NodeGroup> = node_group_list
+            .clone()
+            .into_iter()
+            .map(|(x, y)| return y.node_group)
+            .collect();
         let resp: NodeGroupsResponse = NodeGroupsResponse { node_groups: ng };
         Ok(Response::new(resp))
     }
@@ -423,10 +423,10 @@ impl CloudProvider for ImplementedCloudProvider {
     }
 }
 
-pub async fn serve(_config: Config) -> Result<(), tonic::transport::Error> {
-    let mut provider: ImplementedCloudProvider = ImplementedCloudProvider::new(_config);
+pub async fn serve() -> Result<(), tonic::transport::Error> {
+    let mut provider: ImplementedCloudProvider = ImplementedCloudProvider::new();
 
-    let settings = provider.config.read().unwrap().clone();
+    let settings = SETTINGS.read().unwrap().clone();
 
     let listen_addr = match settings.get_string("bind_addr") {
         Ok(s) => s,

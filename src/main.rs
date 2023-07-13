@@ -7,7 +7,6 @@ use std::env;
 #[tokio::main]
 async fn main() {
     // setup logging
-    info!("Starting libvirt-autoscaler.");
     let cfg_file = match std::env::var("CONFIG_FILE_PATH") {
         Ok(s) => s,
         Err(_e) => "./config.toml".to_string(),
@@ -32,5 +31,10 @@ async fn main() {
     }
     tracing_subscriber::fmt::init();
 
-    let _ = serve(settings).await;
+    info!(
+        "libvirt_autoscaler {} {}",
+        env!("CARGO_PKG_VERSION"),
+        env!("GIT_HASH")
+    );
+    let _ = serve().await;
 }

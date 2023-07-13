@@ -4,14 +4,6 @@ use crate::cloud_provider_impl::protobufs::k8s::io::apimachinery::pkg::apis::met
 use config::{Config, Map, Value, ValueKind};
 use std::sync::RwLock;
 
-const DEFAULT_NG_NAME: &str = "no-name-specified";
-const DEFAULT_ARCH: &str = "amd64";
-const DEFAULT_INSTANCE_TYPE: &str = "k3s";
-const DEFAULT_OS: &str = "linux";
-const DEFAULT_CPU: &str = "1";
-const DEFAULT_MEM: &str = "512Mi";
-const DEFAULT_PODS: &str = "110";
-
 pub fn generate_node_template(ng: Map<String, Value>) -> Node {
     let mut node = Node::default();
     let mut node_spec = NodeSpec::default();
@@ -27,42 +19,57 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
     metadata.labels.insert(
         String::from("beta.kubernetes.io/arch"),
         ng.get("node-label-arch")
-            .unwrap()
+            .unwrap_or(&Value::new(
+                None,
+                ValueKind::String(DEFAULT_ARCH.parse().unwrap()),
+            ))
             .clone()
             .into_string()
-            .unwrap_or(DEFAULT_ARCH.to_string()),
+            .unwrap(),
     );
     metadata.labels.insert(
         String::from("beta.kubernetes.io/instance-type"),
         ng.get("node-label-instance-type")
-            .unwrap()
+            .unwrap_or(&Value::new(
+                None,
+                ValueKind::String(DEFAULT_INSTANCE_TYPE.parse().unwrap()),
+            ))
             .clone()
             .into_string()
-            .unwrap_or(DEFAULT_INSTANCE_TYPE.to_string()),
+            .unwrap(),
     );
     metadata.labels.insert(
         String::from("beta.kubernetes.io/os"),
         ng.get("node-label-os")
-            .unwrap()
+            .unwrap_or(&Value::new(
+                None,
+                ValueKind::String(DEFAULT_OS.parse().unwrap()),
+            ))
             .clone()
             .into_string()
-            .unwrap_or(DEFAULT_OS.to_string()),
+            .unwrap(),
     );
     metadata.labels.insert(
         String::from("kubernetes.io/arch"),
         ng.get("node-label-arch")
-            .unwrap()
+            .unwrap_or(&Value::new(
+                None,
+                ValueKind::String(DEFAULT_ARCH.parse().unwrap()),
+            ))
             .clone()
             .into_string()
-            .unwrap_or(DEFAULT_ARCH.to_string()),
+            .unwrap(),
     );
     metadata.labels.insert(
         String::from("kubernetes.io/os"),
         ng.get("node-label-os")
-            .unwrap()
+            .unwrap_or(&Value::new(
+                None,
+                ValueKind::String(DEFAULT_OS.parse().unwrap()),
+            ))
             .clone()
             .into_string()
-            .unwrap_or(DEFAULT_OS.to_string()),
+            .unwrap(),
     );
     metadata.labels.insert(
         String::from("kubernetes.io/hostname"),
@@ -71,10 +78,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
     metadata.labels.insert(
         String::from("node.kubernetes.io/instance-type"),
         ng.get("node-label-instance-type")
-            .unwrap()
+            .unwrap_or(&Value::new(
+                None,
+                ValueKind::String(DEFAULT_INSTANCE_TYPE.parse().unwrap()),
+            ))
             .clone()
             .into_string()
-            .unwrap_or(DEFAULT_INSTANCE_TYPE.to_string()),
+            .unwrap(),
     );
 
     metadata.name = Some(fake_hostname.clone());
@@ -85,10 +95,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
         Quantity {
             string: Some(
                 ng.get("node-cpu-count")
-                    .unwrap()
+                    .unwrap_or(&Value::new(
+                        None,
+                        ValueKind::String(DEFAULT_CPU.parse().unwrap()),
+                    ))
                     .clone()
                     .into_string()
-                    .unwrap_or(DEFAULT_CPU.to_string()),
+                    .unwrap(),
             ),
         },
     );
@@ -97,10 +110,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
         Quantity {
             string: Some(
                 ng.get("node-memory")
-                    .unwrap()
+                    .unwrap_or(&Value::new(
+                        None,
+                        ValueKind::String(DEFAULT_MEM.parse().unwrap()),
+                    ))
                     .clone()
                     .into_string()
-                    .unwrap_or(DEFAULT_MEM.to_string()),
+                    .unwrap(),
             ),
         },
     );
@@ -109,10 +125,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
         Quantity {
             string: Some(
                 ng.get("node-max-pods")
-                    .unwrap()
+                    .unwrap_or(&Value::new(
+                        None,
+                        ValueKind::String(DEFAULT_PODS.parse().unwrap()),
+                    ))
                     .clone()
                     .into_string()
-                    .unwrap_or(DEFAULT_PODS.to_string()),
+                    .unwrap(),
             ),
         },
     );
@@ -121,10 +140,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
         Quantity {
             string: Some(
                 ng.get("node-cpu-count")
-                    .unwrap()
+                    .unwrap_or(&Value::new(
+                        None,
+                        ValueKind::String(DEFAULT_CPU.parse().unwrap()),
+                    ))
                     .clone()
                     .into_string()
-                    .unwrap_or(DEFAULT_CPU.to_string()),
+                    .unwrap(),
             ),
         },
     );
@@ -133,10 +155,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
         Quantity {
             string: Some(
                 ng.get("node-memory")
-                    .unwrap()
+                    .unwrap_or(&Value::new(
+                        None,
+                        ValueKind::String(DEFAULT_MEM.parse().unwrap()),
+                    ))
                     .clone()
                     .into_string()
-                    .unwrap_or(DEFAULT_MEM.to_string()),
+                    .unwrap(),
             ),
         },
     );
@@ -145,10 +170,13 @@ pub fn generate_node_template(ng: Map<String, Value>) -> Node {
         Quantity {
             string: Some(
                 ng.get("node-max-pods")
-                    .unwrap()
+                    .unwrap_or(&Value::new(
+                        None,
+                        ValueKind::String(DEFAULT_PODS.parse().unwrap()),
+                    ))
                     .clone()
                     .into_string()
-                    .unwrap_or(DEFAULT_PODS.to_string()),
+                    .unwrap(),
             ),
         },
     );

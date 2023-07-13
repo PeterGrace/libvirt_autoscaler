@@ -1,5 +1,6 @@
 use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::NodeGroup;
 use crate::xml_consts::{VM_XML, VOL_XML};
+use crate::SETTINGS;
 use anyhow::{bail, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -9,12 +10,6 @@ use virt::domain::Domain;
 use virt::storage_pool::StoragePool;
 use virt::storage_vol::StorageVol;
 use virt::sys;
-
-const MIN_SIZE: i32 = 1;
-const MAX_SIZE: i32 = 10;
-const VIRT_URI: &str = "qemu+ssh://root@10.174.5.25/system";
-
-const IMAGE_POOL: &str = "default";
 
 lazy_static! {
     pub static ref NODE_GROUP_REGEX: Regex = Regex::new("k8s-(.+?)-.*").unwrap();
@@ -64,7 +59,12 @@ pub async fn libvirt_delete_node(node_name: String) -> Result<()> {
             node_name
         );
     }
-    let default_pool = match StoragePool::lookup_by_name(&conn, IMAGE_POOL) {
+    let image_pool = SETTINGS
+        .read()
+        .unwrap()
+        .get_string("kvm_storage_pool")
+        .unwrap();
+    let default_pool = match StoragePool::lookup_by_name(&conn, &image_pool) {
         Ok(d) => d,
         Err(e) => {
             disconnect(conn);
@@ -117,8 +117,9 @@ pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> 
 }
 
 fn connect_libvirt() -> Option<Connect> {
-    debug!("About to connect to {VIRT_URI}");
-    let conn = match Connect::open(VIRT_URI) {
+    let virt_uri = SETTINGS.read().unwrap().get_string("kvm_uri").unwrap();
+    debug!("About to connect to {virt_uri}");
+    let conn = match Connect::open(&virt_uri) {
         Ok(c) => c,
         Err(e) => {
             error!("Can't connect to libvirt: {e}");
@@ -159,9 +160,7 @@ fn libvirt_node_groups(conn: &Connect) -> Result<Vec<NodeGroup>> {
         for cap in NODE_GROUP_REGEX.captures_iter(&node) {
             node_group_list.push(NodeGroup {
                 id: String::from(&cap[1]),
-                min_size: MIN_SIZE,
-                max_size: MAX_SIZE,
-                debug: String::from("false"),
+                ..Default::default()
             })
         }
     }
@@ -183,7 +182,12 @@ pub async fn create_instance(node_group: String) -> Result<()> {
         }
     };
     debug!("Getting storage pool...");
-    let default_pool = match StoragePool::lookup_by_name(&conn, IMAGE_POOL) {
+    let image_pool = SETTINGS
+        .read()
+        .unwrap()
+        .get_string("kvm_storage_pool")
+        .unwrap();
+    let default_pool = match StoragePool::lookup_by_name(&conn, &image_pool) {
         Ok(d) => d,
         Err(e) => {
             disconnect(conn);

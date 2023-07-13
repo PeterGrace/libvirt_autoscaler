@@ -1,0 +1,14 @@
+log_level = "debug,h2=info"
+bind_addr = "[::]"
+bind_port = 50051
+tls = true
+cert_path = "tls/pgdev.crt"
+key_path = "tls/pgdev.key"
+kvm_uri = "qemu+ssh://root@10.174.5.25/system"
+kvm_storage_pool = "default"
+
+[[node_groups]]
+name = "libvirt"
+min_nodes = 1
+max_nodes = 100
+scale_down_utilization_threshold=0.1
