@@ -12,3 +12,5 @@ name = "libvirt"
 min_nodes = 1
 max_nodes = 100
 scale_down_utilization_threshold=0.1
+node-cpu-count = 8
+node-memory = "8192Mi"

@@ -1,4 +1,5 @@
 use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1::externalgrpc::NodeGroup;
+use crate::structs::ImplementedNodeGroup;
 use crate::xml_consts::{VM_XML, VOL_XML};
 use crate::SETTINGS;
 use anyhow::{bail, Result};
@@ -89,19 +90,20 @@ pub async fn libvirt_delete_node(node_name: String) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_nodes_in_node_group(node_group: String) -> Result<Vec<String>> {
+pub async fn get_nodes_in_node_group(node_group: &ImplementedNodeGroup) -> Result<Vec<String>> {
     let conn = match connect_libvirt() {
         Some(conn) => conn,
         None => {
             bail!("Couldn't connect to libvirt!");
         }
     };
+    let node_group_name = &node_group.node_group.id;
     match libvirt_get_nodes(&conn) {
         Ok(v) => {
             let mut node_list: Vec<String> = vec![];
             for node in v {
                 for cap in NODE_GROUP_REGEX.captures_iter(&node) {
-                    if node_group.eq_ignore_ascii_case(&cap[1]) {
+                    if node_group_name.eq_ignore_ascii_case(&cap[1]) {
                         node_list.push(node.clone());
                     }
                 }
@@ -174,7 +176,7 @@ fn disconnect(mut conn: Connect) {
     debug!("Disconnected from libvirt");
 }
 
-pub async fn create_instance(node_group: String) -> Result<()> {
+pub async fn create_instance(node_group: &ImplementedNodeGroup) -> Result<()> {
     let conn = match connect_libvirt() {
         Some(conn) => conn,
         None => {
@@ -197,7 +199,7 @@ pub async fn create_instance(node_group: String) -> Result<()> {
 
     // decide on host details
     let uuid = Uuid::new_v4();
-    let hostname = format!("k8s-{node_group}-{uuid}");
+    let hostname = format!("k8s-{}-{uuid}", node_group.node_group.id);
     let networkname = String::from("bridged-vlan-3");
 
     // create disk
@@ -208,10 +210,29 @@ pub async fn create_instance(node_group: String) -> Result<()> {
         bail!("we attempted to create storage but failed: {e}");
     }
 
+    // since we already have the node template built, we can use this rather than a lot of match calls to get the
+    // values out of the config toml.
+    let node_status = node_group.node_template.status.clone().unwrap();
+    let node_cpu = node_status
+        .allocatable
+        .get("cpu")
+        .unwrap()
+        .string
+        .clone()
+        .unwrap();
+    let node_mem = node_status
+        .allocatable
+        .get("memory")
+        .unwrap()
+        .string
+        .clone()
+        .unwrap();
     // create vm
     debug!("Creating vm...");
     let vmxml = String::from(VM_XML)
         .replace("HOSTNAME", &hostname)
+        .replace("NUMCPUS", &node_cpu)
+        .replace("MEMORYKB", &node_mem)
         .replace("NETWORK-NAME", &networkname);
     if let Err(e) = Domain::create_xml(&conn, &vmxml, 0) {
         disconnect(conn);

@@ -4,7 +4,6 @@ ARG TARGETARCH
 RUN mkdir -p /opt/libvirt_autoscaler
 WORKDIR /opt/libvirt_autoscaler
 COPY ./tools/target_arch.sh /opt/libvirt_autoscaler
-COPY ./docker/config.toml /opt/libvirt_autoscaler/
 RUN apt-get -y update \
   && DEBIAN_FRONTEND=noninteractive  apt-get -y install libvirt-dev
 RUN --mount=type=bind,target=/context \

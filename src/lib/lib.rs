@@ -3,7 +3,7 @@ extern crate tracing;
 pub mod cloud_provider_impl;
 pub mod libvirt;
 mod node_template;
-mod structs;
+pub mod structs;
 mod xml_consts;
 
 use config::Config;

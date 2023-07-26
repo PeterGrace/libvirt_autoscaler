@@ -4,6 +4,14 @@ use crate::cloud_provider_impl::protobufs::k8s::io::apimachinery::pkg::apis::met
 use config::{Config, Map, Value, ValueKind};
 use std::sync::RwLock;
 
+const DEFAULT_NG_NAME: &str = "no-name-specified";
+const DEFAULT_ARCH: &str = "amd64";
+const DEFAULT_INSTANCE_TYPE: &str = "k3s";
+const DEFAULT_OS: &str = "linux";
+const DEFAULT_CPU: &str = "1";
+const DEFAULT_MEM: &str = "512Mi";
+const DEFAULT_PODS: &str = "110";
+
 pub fn generate_node_template(ng: Map<String, Value>) -> Node {
     let mut node = Node::default();
     let mut node_spec = NodeSpec::default();

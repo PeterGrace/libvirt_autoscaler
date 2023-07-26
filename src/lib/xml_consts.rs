@@ -6,9 +6,9 @@ pub(crate) const VM_XML: &str = r###"
       <libosinfo:os id="http://ubuntu.com/ubuntu/22.04"/>
     </libosinfo:libosinfo>
   </metadata>
-  <memory>8388608</memory>
-  <currentMemory>8388608</currentMemory>
-  <vcpu>8</vcpu>
+  <memory>MEMORYKB</memory>
+  <currentMemory>MEMORYKB</currentMemory>
+  <vcpu>NUMCPUS</vcpu>
   <sysinfo type="smbios">
     <system>
       <entry name="serial">ds=nocloud-net;s=http://10.174.5.25:8080/;h=HOSTNAME</entry>

@@ -9,7 +9,7 @@ use crate::libvirt::{
     create_instance, get_nodes_in_node_group, libvirt_delete_node, NODE_GROUP_REGEX,
 };
 use crate::node_template::generate_node_template;
-use crate::SETTINGS;
+use crate::{structs, SETTINGS};
 use config::{Config, Value, ValueKind};
 use core::time::Duration as sysDuration;
 use once_cell::sync::OnceCell;
@@ -39,6 +39,7 @@ use protobufs::k8s::io::apimachinery::pkg::apis::meta::v1::{Duration, ObjectMeta
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use structs::{ImplementedCloudProvider, ImplementedNodeGroup};
 use tokio::net::unix::SocketAddr;
 use tokio::sync::Mutex;
 use tokio::time::Duration as timeDuration;
@@ -46,18 +47,6 @@ use tonic::transport::Server;
 use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{Code, Request, Response, Status};
 
-#[derive(Default, Clone)]
-pub struct ImplementedNodeGroup {
-    node_group: NodeGroup,
-    options: NodeGroupAutoscalingOptions,
-    node_template: Node,
-}
-
-#[derive(Default)]
-pub struct ImplementedCloudProvider {
-    node_groups: Arc<Mutex<HashMap<String, ImplementedNodeGroup>>>,
-    machine_count: Arc<Mutex<HashMap<String, i32>>>,
-}
 impl ImplementedCloudProvider {
     fn new() -> Self {
         let mut groupopts: HashMap<String, ImplementedNodeGroup> = HashMap::new();
@@ -260,9 +249,10 @@ impl CloudProvider for ImplementedCloudProvider {
         _request: Request<RefreshRequest>,
     ) -> std::result::Result<Response<RefreshResponse>, Status> {
         //TODO: make this more dynamic, also in get_node_groups logic
-        let node_groups = vec!["libvirt"];
-        for ng in node_groups {
-            let current_count = get_nodes_in_node_group(String::from(ng))
+        let node_groups = self.node_groups.lock().await;
+
+        for ng in node_groups.keys() {
+            let current_count = get_nodes_in_node_group(node_groups.get(ng).clone().unwrap())
                 .await
                 .unwrap_or_else(|_| vec![])
                 .len() as i32;
@@ -270,7 +260,7 @@ impl CloudProvider for ImplementedCloudProvider {
             let requested_count = machinecount.get(ng).unwrap_or(&0);
             if requested_count > &current_count {
                 for _n in current_count..requested_count + 1 {
-                    match create_instance(String::from(ng)).await {
+                    match create_instance(node_groups.get(ng).clone().unwrap()).await {
                         Ok(_) => {}
                         Err(e) => {
                             error!("Couldn't create node in {ng}: {e}");
@@ -287,7 +277,9 @@ impl CloudProvider for ImplementedCloudProvider {
         request: Request<NodeGroupTargetSizeRequest>,
     ) -> std::result::Result<Response<NodeGroupTargetSizeResponse>, Status> {
         let req: NodeGroupTargetSizeRequest = request.into_inner();
-        let count = get_nodes_in_node_group(req.id.clone())
+        let node_groups = self.node_groups.lock().await;
+        let node_group = node_groups.get(req.id.clone().as_str()).unwrap();
+        let count = get_nodes_in_node_group(node_group)
             .await
             .unwrap_or_else(|_| vec![])
             .len();
@@ -365,7 +357,9 @@ impl CloudProvider for ImplementedCloudProvider {
         _request: Request<NodeGroupNodesRequest>,
     ) -> std::result::Result<Response<NodeGroupNodesResponse>, Status> {
         let req = _request.into_inner();
-        let nodelist = match get_nodes_in_node_group(req.id).await {
+        let node_groups = self.node_groups.lock().await;
+        let node_group = node_groups.get(req.id.clone().as_str()).unwrap();
+        let nodelist = match get_nodes_in_node_group(&node_group).await {
             Ok(v) => v,
             Err(e) => {
                 error!("Couldn't process node groups: {e}");
@@ -396,7 +390,19 @@ impl CloudProvider for ImplementedCloudProvider {
     ) -> std::result::Result<Response<NodeGroupTemplateNodeInfoResponse>, Status> {
         let req = request.into_inner();
         let mut resp = NodeGroupTemplateNodeInfoResponse::default();
-
+        let node_group_list = self.node_groups.lock().await;
+        let node_group = match node_group_list.get(&req.id) {
+            Some(s) => s,
+            None => {
+                warn!("Couldn't find info for nodegroup {}", req.id);
+                return Err(tonic::Status::new(
+                    Code::Unavailable,
+                    "node group template not found",
+                ));
+            }
+        };
+        resp.node_info = Some(node_group.node_template.clone());
+        debug!("{:#?}", resp);
         Ok(Response::new(resp))
     }
 

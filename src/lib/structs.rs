@@ -4,34 +4,35 @@ use crate::cloud_provider_impl::protobufs::clusterautoscaler::cloudprovider::v1:
 use crate::cloud_provider_impl::protobufs::k8s::io::api::core::v1::Node;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub const DEFAULT_NG_NAME: &str = "no-name-specified";
-pub const DEFAULT_ARCH: &str = "amd64";
-pub const DEFAULT_INSTANCE_TYPE: &str = "k3s";
-pub const DEFAULT_OS: &str = "linux";
-pub const DEFAULT_CPU: &str = "1";
-pub const DEFAULT_MEM: &str = "512Mi";
-pub const DEFAULT_PODS: &str = "110";
+const DEFAULT_NG_NAME: &str = "no-name-specified";
+const DEFAULT_ARCH: &str = "amd64";
+const DEFAULT_INSTANCE_TYPE: &str = "k3s";
+const DEFAULT_OS: &str = "linux";
+const DEFAULT_CPU: &str = "1";
+const DEFAULT_MEM: &str = "512Mi";
+const DEFAULT_PODS: &str = "110";
 
-macro_rules! hashmap {
+macro_rules! some_hashmap {
     // map-like
     ($($k:expr => $v:expr),* $(,)?) => {{
-        core::convert::From::from([$(($k, $v),)*])
-    }};
+        Some(core::convert::From::from([$(($k, $v),)*]))
+    }}
 }
 
 #[derive(Default, Clone)]
 pub struct ImplementedNodeGroup {
-    node_group: NodeGroup,
-    options: NodeGroupAutoscalingOptions,
-    node_template: Node,
+    pub node_group: NodeGroup,
+    pub options: NodeGroupAutoscalingOptions,
+    pub node_template: Node,
 }
 
 #[derive(Default)]
 pub struct ImplementedCloudProvider {
-    node_groups: Arc<Mutex<HashMap<String, ImplementedNodeGroup>>>,
-    machine_count: Arc<Mutex<HashMap<String, i32>>>,
+    pub node_groups: Arc<Mutex<HashMap<String, ImplementedNodeGroup>>>,
+    pub machine_count: Arc<Mutex<HashMap<String, i32>>>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -53,12 +54,13 @@ impl Default for NodeGroupOpts {
     fn default() -> Self {
         NodeGroupOpts {
             name: "".to_string(),
-            model_node_cpu_count: Some(1),
-            model_node_memory: Some("512Mi".to_string()),
-            model_node_max_pods: Some(110),
-            model_node_labels: hashmap! {
-                "kubernetes.io/os" => DEFAULT_OS.to_string()
-            },
+            model_node_cpu_count: Some(DEFAULT_CPU.parse().unwrap()),
+            model_node_memory: Some(DEFAULT_MEM.to_string()),
+            model_node_max_pods: Some(DEFAULT_PODS.parse().unwrap()),
+            model_node_labels: Some(HashMap::from([(
+                "kubernetes.io/os".to_string(),
+                DEFAULT_OS.to_string(),
+            )])),
             model_node_annotations: None,
             scale_down_utilization_threshold: None,
             scale_down_gpu_utilization_threshold: None,
